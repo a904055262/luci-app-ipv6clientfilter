@@ -6,7 +6,7 @@ return view.extend({
         var m,
         s,
         o;
-        m = new form.Map('ipv6clientfilter', _('ipv6 client filter'), _('Allow or deny specific clients to obtain IPv6 addresses'));
+        m = new form.Map('ipv6clientfilter', _('ipv6 client filter'), _('Allow or deny specific clients from accessing ipv6 networks'));
 		
         s = m.section(form.NamedSection, 'prefs', 'ipv6clientfilter', _('basic settings'));
 		
@@ -14,7 +14,7 @@ return view.extend({
 		o.rmempty = false;
         o.default = '0';
 
-        o = s.option(form.ListValue, 'mode', _('mode'), _('blacklist: block clients in the list; whitelist: only clients in the list are allowed'));
+        o = s.option(form.ListValue, 'mode', _('mode'), _('blacklist: block clients in the list; whitelist: only allow clients in the list are allowed'));
         o.value('blacklist', _('blacklist'));
         o.value('whitelist', _('whitelist'));
         o.rmempty = false;
@@ -33,7 +33,7 @@ return view.extend({
 		o.width = 200;
 		o.validate = function (cfg, value) {
 			if ( ! /^([0-9A-Fa-f]{2}:){5}([0-9A-Fa-f]{2})$/.test(value)){
-				return _('format') + ':00:0C:29:CA:E4:66';
+				return _('format') + ' xx:xx:xx:xx:xx:xx';
 			}
 			return true;
 		};

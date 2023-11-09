@@ -20,26 +20,18 @@ iptrule(){
 		ipset add $conf $mac
 	done
 
-	local dhcpdev ip6shf=/tmp/.$conf
-	
-	cat << EOF > "$ip6shf"
-ip6tables -t mangle -N $conf
-EOF
-	
-	for dhcpdev in $dhcpdevs;do
-		echo "ip6tables -t mangle -I PREROUTING -i $dhcpdev -j $conf " >> "$ip6shf"
-	done
-	
+	local ip6shf=/tmp/.$conf
+
 	local sign='!'
 	if [ "$mode" = 'blacklist' ];then
 		sign=
 	fi
 	
-	echo "
-	ip6tables -t mangle -A $conf -p ipv6-icmp       -m set $sign --match-set $conf src -j DROP
-	ip6tables -t mangle -A $conf -p udp --dport 547 -m set $sign --match-set $conf src -j DROP
-	" >> "$ip6shf"
-	
+	cat << EOF > "$ip6shf"
+ip6tables -t mangle -I PREROUTING -m set $sign --match-set $conf src -j DROP
+EOF
+
+	chmod +x "$ip6shf"
 	sh "$ip6shf"
 	
 	# 防火墙重载绑定
@@ -51,6 +43,7 @@ EOF
 		
 		commit firewall
 EOF
+
 }
 
 nftrule(){
@@ -59,18 +52,14 @@ nftrule(){
 
 	# 转成 mac, mac2, mac3 set格式
 	local macs_set=$(printf "%s, " $macs)
-	local dhcpdevs_set=$(printf "%s, " $dhcpdevs)
-	local sign='!='
 	
+	local sign='!='
 	if [ "$mode" = 'blacklist' ];then
 		sign=
 	fi
 	
-	nft add rule ip6 $conf mangle_prer \
-		iifname { $dhcpdevs_set } udp dport 547 ether saddr $sign { $macs_set } counter drop comment \" 阻止dhcpv6\"
-	
-	nft add rule ip6 $conf mangle_prer \
-		iifname { $dhcpdevs_set } icmpv6 type { 133-143 } ether saddr $sign { $macs_set } counter drop comment \" 阻止slaac\"
+	# pppoe-wan进来的数据包没有 ether saddr daddr，它会无视这条规则
+	nft add rule ip6 $conf mangle_prer ether saddr $sign { $macs_set } counter drop comment \" 阻止特定mac的ipv6 \"
 }
 
 macs=
@@ -86,12 +75,6 @@ getmacs(){
 	macs="$macs $mac"
 }
 
-dhcpdevs=
-getdhcpdevs(){
-	local dhcpif=$1 dev
-	dev=$(uci get network.$dhcpif.device)
-	dhcpdevs="$dhcpdevs $dev"
-}
 
 mode=
 start_service(){
@@ -128,17 +111,7 @@ start_service(){
 	echo "$name start"
 	config_get mode prefs mode
 	echo "模式: $mode"
-	
-	echo 获取启用的dhcp的接口设备
-	config_load dhcp
-	config_foreach getdhcpdevs dhcp
-	echo "dhcpdevs: '$dhcpdevs'"
-	[ "$dhcpdevs" ] || {
-		echo 没有找到启用dhcp的接口,无需启动
-		return 2
-	}
-	
-	config_load $conf
+
 	echo 开始获取mac地址
 	config_foreach getmacs client
 	echo "macs:'$macs'"
@@ -168,9 +141,6 @@ stop_service(){
 		ip6tables --line-numbers -t mangle -nL PREROUTING \
 			| grep -F " $conf " | awk '{print $1}' | sort -nr \
 			| xargs -t -n 1 -r ip6tables -t mangle -D PREROUTING 
-		
-		ip6tables -t mangle -F $conf
-		ip6tables -t mangle -X $conf
 		
 		ipset destroy $conf
 		
