@@ -28,7 +28,7 @@ iptrule(){
 	fi
 	
 	cat << EOF > "$ip6shf"
-ip6tables -t mangle -I PREROUTING -m set $sign --match-set $conf src -j DROP
+ip6tables -t raw -I PREROUTING -m set $sign --match-set $conf src -j DROP
 EOF
 
 	chmod +x "$ip6shf"
@@ -48,7 +48,7 @@ EOF
 
 nftrule(){
 	nft add table ip6 $conf
-	nft add chain ip6 $conf mangle_prer { type filter hook prerouting priority mangle - 100 \;}
+	nft add chain ip6 $conf raw_prer { type filter hook prerouting priority raw - 1 \;}
 
 	# 转成 mac, mac2, mac3 set格式
 	local macs_set=$(printf "%s, " $macs)
@@ -59,7 +59,7 @@ nftrule(){
 	fi
 	
 	# pppoe-wan进来的数据包没有 ether saddr daddr，它会无视这条规则
-	nft add rule ip6 $conf mangle_prer ether saddr $sign { $macs_set } counter drop comment \" 阻止特定mac的ipv6 \"
+	nft add rule ip6 $conf raw_prer ether saddr $sign { $macs_set } counter drop comment \" 阻止特定mac的ipv6 \"
 }
 
 macs=
@@ -138,9 +138,9 @@ stop_service(){
 		nft delete table ip6 $conf 
 	else
 		# 删除从数字大的索引开始，否则删除小的，后面的索引会变，如果删除了1，索引2就会变成1
-		ip6tables --line-numbers -t mangle -nL PREROUTING \
+		ip6tables --line-numbers -t raw -nL PREROUTING \
 			| grep -F " $conf " | awk '{print $1}' | sort -nr \
-			| xargs -t -n 1 -r ip6tables -t mangle -D PREROUTING 
+			| xargs -t -n 1 -r ip6tables -t raw -D PREROUTING 
 		
 		ipset destroy $conf
 		
